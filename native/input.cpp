@@ -532,20 +532,22 @@ Pad Poll(int port) {
     Pad p;
     const bool menu = g_pad_menu_mode.load(std::memory_order_relaxed);
     const PadBinds binds = menu ? PadBinds{} : PadBindsNow();
+    bool loose = false;
     {
         std::lock_guard lock(g_lock);
         if (SDL_Gamepad* pad = port >= 0 && port < 4 ? g_pads[port] : nullptr) {
             Read(pad, p);
         }
+        loose = port == 0 && !g_pads[0];
     }
     // a controller pushed past a rest, not just plugged in
     constexpr int16_t kStickPushed = 16000;
     auto pushed = [](int16_t v) { return v > kStickPushed || v < -kStickPushed; };
-    if (port == 0) MergeLoose(p, PadBinds{});
+    if (loose) MergeLoose(p, PadBinds{});
     if (!menu) {
         std::lock_guard lock(g_lock);
         SDL_Gamepad* pad = port >= 0 && port < 4 ? g_pads[port] : nullptr;
-        ApplyBinds(pad, p, binds, port == 0);
+        ApplyBinds(pad, p, binds, port == 0 && !g_pads[0]);
     }
     bool analog = std::any_of(std::begin(p.analog), std::end(p.analog), [](uint8_t a) { return a > 0x20; });
     if (p.buttons || analog || pushed(p.lx) || pushed(p.ly) || pushed(p.rx) || pushed(p.ry)) touch::PadUsed();
@@ -742,9 +744,10 @@ std::string PressedPadInput() {
             return SourceText({'t', 4});
     }
 
-    if (LogicalTriggerValue(nullptr, 5, true) > 0.12f)
+    const bool use_loose = !g_pads[0];
+    if (use_loose && LogicalTriggerValue(nullptr, 5, true) > 0.12f)
         return SourceText({'t', 5});
-    if (LogicalTriggerValue(nullptr, 4, true) > 0.12f)
+    if (use_loose && LogicalTriggerValue(nullptr, 4, true) > 0.12f)
         return SourceText({'t', 4});
 
     for (SDL_Gamepad* pad : g_pads) {
@@ -773,9 +776,10 @@ std::string PressedPadInput() {
         }
     }
 
-    for (int code = 0; code < kLooseCodes; ++code)
-        if (g_loose.keys[size_t(code)])
-            return SourceText({'k', code});
+    if (use_loose)
+        for (int code = 0; code < kLooseCodes; ++code)
+            if (g_loose.keys[size_t(code)])
+                return SourceText({'k', code});
 
     return {};
 }

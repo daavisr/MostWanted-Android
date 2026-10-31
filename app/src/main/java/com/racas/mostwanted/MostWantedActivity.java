@@ -74,17 +74,15 @@ public class MostWantedActivity extends SDLActivity {
         });
     }
 
-    // A controller some phones' game services pass on as a virtual device (MIUI's took a DualShock 4 on a Redmi Note
-    // 8 Pro): SDL sees no controller in it and drops its input. Its buttons and sticks go to the game as port 0's
-    // here (native/input.cpp); a controller SDL has goes its own way as before.
+    // Keep Android's normalized controls as a fallback for devices SDL opens as a joystick but cannot map as a
+    // gamepad. SDL-managed events still go through SDL; native/input.cpp uses these only when it has no gamepad.
     private static native void nativeLooseKey(int keyCode, boolean down);
     private static native void nativeLooseAxes(float lx, float ly, float rx, float ry, float lt, float rt, float hx,
                                                float hy);
     private static native void nativeLooseRelease();
 
     private static boolean loose(InputEvent e, int sources) {
-        return !mBrokenLibraries && (e.getSource() & sources) != 0
-                && !SDLControllerManager.isDeviceSDLJoystick(e.getDeviceId());
+        return !mBrokenLibraries && (e.getSource() & sources) != 0;
     }
 
     @Override
@@ -93,7 +91,7 @@ public class MostWantedActivity extends SDLActivity {
                 && e.getKeyCode() <= KeyEvent.KEYCODE_DPAD_RIGHT);
         if (pad && loose(e, InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_JOYSTICK)) {
             if (e.getRepeatCount() == 0) nativeLooseKey(e.getKeyCode(), e.getAction() == KeyEvent.ACTION_DOWN);
-            return true;
+            if (!SDLControllerManager.isDeviceSDLJoystick(e.getDeviceId())) return true;
         }
         return super.dispatchKeyEvent(e);
     }
@@ -107,7 +105,7 @@ public class MostWantedActivity extends SDLActivity {
                     Math.max(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE)),
                     Math.max(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS)),
                     e.getAxisValue(MotionEvent.AXIS_HAT_X), e.getAxisValue(MotionEvent.AXIS_HAT_Y));
-            return true;
+            if (!SDLControllerManager.isDeviceSDLJoystick(e.getDeviceId())) return true;
         }
         return super.dispatchGenericMotionEvent(e);
     }
